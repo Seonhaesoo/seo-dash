@@ -8,14 +8,19 @@
 - `install.sh` — 데비안/우분투 VM에 `/opt/seo-dash` 설치 + systemd 서비스·타이머.
 
 ## 설치
+sudo 가 되는 VM:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Seonhaesoo/seo-dash/main/install.sh | sudo bash
+```
+sudo 없이(사용자 서비스 + linger):
+```bash
+curl -fsSL https://raw.githubusercontent.com/Seonhaesoo/seo-dash/main/install-user.sh | bash
 ```
 그다음 `http://<VM IP>:8080/settings` 에서 key.json 업로드 → 서비스 계정 이메일을 서치콘솔·GA4에 사용자로 추가 → 성적표에서 지금 동기화.
 
 ## 갱신
 ```bash
-cd /opt/seo-dash && git pull && sudo systemctl restart seo-dash
+cd ~/seo-dash && git pull && systemctl --user restart seo-dash   # (sudo 설치면 /opt/seo-dash, sudo systemctl restart seo-dash)
 ```
 
 키 파일(`data/key.json`)과 데이터(`data/seo.db`)는 저장소에 올리지 않는다.
