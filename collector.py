@@ -148,7 +148,11 @@ def sync_ga(s, con, full=False):
 
 def run(full=False):
     started = dt.datetime.now().isoformat(timespec='seconds')
+    if not os.path.exists(KEY_PATH):
+        log('key.json 이 없어 건너뜀: ' + KEY_PATH)
+        return False
     with tx() as con:
+        con.execute("UPDATE sync_log SET status='error', finished=?, message='중단됨 (재시작)' WHERE status='running'", (started,))
         cur = con.execute('INSERT INTO sync_log (started, status, message) VALUES (?,?,?)', (started, 'running', ''))
         log_id = cur.lastrowid
         con.commit()
@@ -159,7 +163,7 @@ def run(full=False):
             sites = sync_gsc(s, con, full)
             props = sync_ga(s, con, full)
         message = f'서치콘솔 {len(sites)}개 · GA4 {len(props)}개'
-    except Exception as e:   # noqa
+    except BaseException as e:   # noqa — SystemExit 포함
         status, message = 'error', f'{type(e).__name__}: {e}'[:500]
         log('오류: ' + message)
     with tx() as con:
