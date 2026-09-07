@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>검색 성적표</title>
+<style>
+  :root { --paper:#FBF8F1; --card:#FFFDF9; --line:#E4DDCF; --ink:#1B1F1D; --muted:#5E665F; --faint:#8A948E; --green:#1E5C46; --gold:#B8862B; --red:#B8382D; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; line-height:1.55; }
+  .app { max-width: 1080px; margin: 0 auto; padding: 18px 20px 60px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:12px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:20px; margin:0; } header .sub { font-size:12.5px; color:var(--faint); }
+  .btn { height:40px; padding:0 16px; border:0; border-radius:10px; background:var(--green); color:#fff; font:inherit; font-weight:700; cursor:pointer; }
+  .btn.ghost { background:transparent; border:1px solid var(--line); color:var(--muted); }
+  .btn[disabled] { opacity:.5; cursor:default; }
+  .heads { margin:14px 0 0; padding:12px 14px; background:var(--card); border:1px solid var(--line); border-radius:12px; font-size:14px; }
+  .heads li { margin:2px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; margin-top:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .card h2 { font-size:16px; margin:0 0 2px; } .card .meta { font-size:12px; color:var(--faint); margin-bottom:8px; }
+  .kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .kpi { background:var(--paper); border-radius:10px; padding:8px 10px; } .kpi small { display:block; font-size:11px; color:var(--faint); }
+  .kpi b { font-size:18px; font-variant-numeric:tabular-nums; } .kpi .d { font-size:11.5px; margin-left:4px; } .up { color:var(--green); } .down { color:var(--red); }
+  svg.spark { width:100%; height:48px; margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:8px; }
+  th, td { text-align:left; padding:4px 4px; border-bottom:1px dashed var(--line); vertical-align:top; }
+  th { font-weight:500; color:var(--faint); font-size:11px; } td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.q { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  details summary { cursor:pointer; font-size:13px; color:var(--muted); margin-top:8px; }
+  .empty { padding:30px; text-align:center; color:var(--muted); background:var(--card); border:1px dashed var(--line); border-radius:14px; margin-top:16px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
+  .note { font-size:11.5px; color:var(--faint); margin-top:6px; }
+  a { color:var(--green); }
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div><h1>검색 성적표</h1><div class="sub">구글 서치콘솔 + GA4 · 서치콘솔 숫자는 2~3일 늦게 확정됩니다 · 오늘 {{ today }}</div></div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    {% if last %}<span class="sub">마지막 동기화 {{ last.finished or last.started }} {% if last.status == 'error' %}<span class="tag" style="color:var(--red)">실패</span>{% endif %}</span>{% endif %}
+    <form method="post" action="/sync"><button class="btn" id="syncBtn" {% if running or not has_key %}disabled{% endif %}>{{ '동기화 중…' if running else '지금 동기화' }}</button></form>
+    <a class="btn ghost" href="/settings" style="display:inline-flex;align-items:center;text-decoration:none;">설정</a>
+  </div>
+</header>
+
+{% if not has_key %}
+<div class="empty">아직 구글 서비스 계정 키가 없습니다. <a href="/settings">설정</a>에서 key.json을 올리고, 그 계정 이메일을 서치콘솔·GA4에 사용자로 추가한 뒤 "지금 동기화"를 누르세요.</div>
+{% elif not gsc and not ga %}
+<div class="empty">아직 받아 온 데이터가 없습니다. 위의 "지금 동기화"를 누르세요. {% if last and last.status == 'error' %}<br><span style="color:var(--red)">{{ last.message }}</span>{% endif %}</div>
+{% else %}
+<ul class="heads">{% for h in heads %}<li>{{ h }}</li>{% endfor %}</ul>
+
+<h2 style="margin:22px 0 0; font-size:17px;">구글 검색 (서치콘솔)</h2>
+<div class="grid">
+{% for g in gsc %}
+<div class="card">
+  <h2>{{ g.label }}</h2>
+  <div class="meta">최근 확정일 {{ g.anchor }} 기준 7일 · 이전 7일 대비</div>
+  <div class="kpis">
+    <div class="kpi"><small>클릭 (7일)</small><b>{{ '{:,}'.format(g.cur.clicks) }}</b>{% if g.d_clicks is not none %}<span class="d {{ 'up' if g.d_clicks >= 0 else 'down' }}">{{ '%+d' % g.d_clicks }}%</span>{% endif %}</div>
+    <div class="kpi"><small>노출 (7일)</small><b>{{ '{:,}'.format(g.cur.impressions) }}</b>{% if g.d_imp is not none %}<span class="d {{ 'up' if g.d_imp >= 0 else 'down' }}">{{ '%+d' % g.d_imp }}%</span>{% endif %}</div>
+    <div class="kpi"><small>평균 순위</small><b>{{ g.cur.position or '—' }}</b></div>
+  </div>
+  {% set mx = (g.series | map(attribute='impressions') | max) if g.series else 0 %}
+  <svg class="spark" viewBox="0 0 300 48" preserveAspectRatio="none">
+    {% for r in g.series %}{% set i = loop.index0 %}{% set w = 300 / (g.series|length) %}
+    <rect x="{{ i * w }}" y="{{ 48 - (r.impressions / mx * 46 if mx else 0) }}" width="{{ w - 1 }}" height="{{ (r.impressions / mx * 46) if mx else 0 }}" fill="#C9D9CF"></rect>
+    <rect x="{{ i * w }}" y="{{ 48 - (r.clicks / mx * 46 if mx else 0) }}" width="{{ w - 1 }}" height="{{ (r.clicks / mx * 46) if mx else 0 }}" fill="#1E5C46"></rect>
+    {% endfor %}
+  </svg>
+  <div class="note">30일 · 연한 막대 노출, 진한 막대 클릭 · 최근일 {{ g.anchor }} 클릭 {{ g.day.clicks }} 노출 {{ g.day.impressions }}</div>
+  {% if g.sitemaps %}<div class="note">사이트맵 제출 {{ '{:,}'.format(g.submitted) }}개{% if g.indexed %} · 색인 {{ '{:,}'.format(g.indexed) }}{% endif %}{% for s in g.sitemaps if s.errors %} · <span style="color:var(--red)">{{ s.path.split('/')[-1] }} 오류 {{ s.errors }}</span>{% endfor %}</div>{% endif %}
+  <details open><summary>검색어 상위 (7일)</summary>
+    <table><tr><th>검색어</th><th style="text-align:right">클릭</th><th style="text-align:right">노출</th><th style="text-align:right">순위</th></tr>
+    {% for q in g.queries %}<tr><td class="q" title="{{ q.query }}">{{ q.query }}</td><td class="n">{{ q.clicks }}</td><td class="n">{{ '{:,}'.format(q.impressions) }}</td><td class="n">{{ '%.1f' % q.position }}</td></tr>{% else %}<tr><td colspan="4" style="color:var(--faint)">아직 없음</td></tr>{% endfor %}
+    </table></details>
+  <details><summary>페이지 상위 (7일)</summary>
+    <table><tr><th>페이지</th><th style="text-align:right">클릭</th><th style="text-align:right">노출</th><th style="text-align:right">순위</th></tr>
+    {% for p in g.pages %}<tr><td class="q" title="{{ p.page }}">{{ p.page.replace('https://','').replace('http://','') }}</td><td class="n">{{ p.clicks }}</td><td class="n">{{ '{:,}'.format(p.impressions) }}</td><td class="n">{{ '%.1f' % p.position }}</td></tr>{% else %}<tr><td colspan="4" style="color:var(--faint)">아직 없음</td></tr>{% endfor %}
+    </table></details>
+  {% if g.chances %}<details><summary>기회 검색어 — 노출은 있는데 순위 10위 밖 (28일)</summary>
+    <table><tr><th>검색어</th><th style="text-align:right">노출</th><th style="text-align:right">순위</th></tr>
+    {% for q in g.chances %}<tr><td class="q">{{ q.query }}</td><td class="n">{{ '{:,}'.format(q.impressions) }}</td><td class="n">{{ '%.1f' % q.position }}</td></tr>{% endfor %}
+    </table><div class="note">이 검색어에 맞는 페이지를 보강하면 첫 페이지로 올라올 여지가 큽니다.</div></details>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<h2 style="margin:22px 0 0; font-size:17px;">방문 (GA4)</h2>
+<div class="grid">
+{% for a in ga %}
+<div class="card">
+  <h2>{{ a.name }}</h2>
+  <div class="meta">어제 · 최근 7일 (이전 7일 대비)</div>
+  <div class="kpis">
+    <div class="kpi"><small>어제 방문자</small><b>{{ '{:,}'.format(a.yesterday.users) }}</b></div>
+    <div class="kpi"><small>7일 방문자</small><b>{{ '{:,}'.format(a.cur.users) }}</b>{% if a.d_users is not none %}<span class="d {{ 'up' if a.d_users >= 0 else 'down' }}">{{ '%+d' % a.d_users }}%</span>{% endif %}</div>
+    <div class="kpi"><small>7일 페이지뷰</small><b>{{ '{:,}'.format(a.cur.pageviews) }}</b></div>
+  </div>
+  {% set mx = (a.series | map(attribute='pageviews') | max) if a.series else 0 %}
+  <svg class="spark" viewBox="0 0 300 48" preserveAspectRatio="none">
+    {% for r in a.series %}{% set i = loop.index0 %}{% set w = 300 / (a.series|length) %}
+    <rect x="{{ i * w }}" y="{{ 48 - (r.pageviews / mx * 46 if mx else 0) }}" width="{{ w - 1 }}" height="{{ (r.pageviews / mx * 46) if mx else 0 }}" fill="#C9D9CF"></rect>
+    <rect x="{{ i * w }}" y="{{ 48 - (r.users / mx * 46 if mx else 0) }}" width="{{ w - 1 }}" height="{{ (r.users / mx * 46) if mx else 0 }}" fill="#B8862B"></rect>
+    {% endfor %}
+  </svg>
+  <div class="note">30일 · 연한 막대 페이지뷰, 금색 막대 방문자</div>
+  <details open><summary>많이 본 페이지 (7일)</summary>
+    <table><tr><th>페이지</th><th style="text-align:right">페이지뷰</th><th style="text-align:right">방문자</th></tr>
+    {% for p in a.pages %}<tr><td class="q" title="{{ p.page }}">{{ p.page }}</td><td class="n">{{ '{:,}'.format(p.pageviews) }}</td><td class="n">{{ '{:,}'.format(p.users) }}</td></tr>{% else %}<tr><td colspan="3" style="color:var(--faint)">아직 없음</td></tr>{% endfor %}
+    </table></details>
+  <details><summary>어디서 왔나 (7일)</summary>
+    <table><tr><th>유입</th><th style="text-align:right">세션</th></tr>
+    {% for s in a.sources %}<tr><td class="q">{{ s.source }}</td><td class="n">{{ '{:,}'.format(s.sessions) }}</td></tr>{% endfor %}
+    </table></details>
+</div>
+{% endfor %}
+</div>
+
+{% if naver %}
+<h2 style="margin:22px 0 0; font-size:17px;">네이버 (CSV 업로드분)</h2>
+<div class="grid">{% for n in naver %}<div class="card"><h2>{{ n.site }}</h2><div class="meta">최근 7일 · 마지막 {{ n.d }}</div><div class="kpis"><div class="kpi"><small>클릭</small><b>{{ '{:,}'.format(n.c or 0) }}</b></div><div class="kpi"><small>노출</small><b>{{ '{:,}'.format(n.i or 0) }}</b></div></div></div>{% endfor %}</div>
+{% endif %}
+{% endif %}
+
+<p class="note" style="margin-top:24px;">읽는 법 — <b>노출</b>은 구글 검색 결과에 내 페이지가 나온 횟수, <b>클릭</b>은 그중 실제로 들어온 횟수, <b>순위</b>는 평균 몇 번째에 나왔는지(작을수록 좋음). 새 사이트는 노출 → 클릭 → 순위 상승 순서로 좋아집니다. 이 화면은 이 집 네트워크(LAN)에서만 열립니다.</p>
+</div>
+<script>
+  // 동기화 중이면 10초마다 상태를 보고 끝나면 새로고침
+  (function () {
+    var running = {{ 'true' if running else 'false' }};
+    if (!running) return;
+    var t = setInterval(function () {
+      fetch('/sync/status').then(function (r) { return r.json(); }).then(function (j) { if (!j.running) { clearInterval(t); location.reload(); } });
+    }, 10000);
+  })();
+</script>
+</body>
+</html>

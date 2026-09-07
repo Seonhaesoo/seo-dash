@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>검색 성적표 — 설정</title>
+<style>
+  body { margin:0; background:#FBF8F1; color:#1B1F1D; font-family:'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; line-height:1.6; }
+  .app { max-width: 760px; margin: 0 auto; padding: 18px 20px 60px; }
+  h1 { font-size:20px; } h2 { font-size:16px; margin:22px 0 6px; }
+  .card { background:#FFFDF9; border:1px solid #E4DDCF; border-radius:14px; padding:14px 16px; margin-top:10px; font-size:14px; }
+  .btn { height:40px; padding:0 16px; border:0; border-radius:10px; background:#1E5C46; color:#fff; font:inherit; font-weight:700; cursor:pointer; }
+  input[type=text] { height:36px; padding:0 10px; border:1px solid #E4DDCF; border-radius:8px; font:inherit; width:100%; box-sizing:border-box; }
+  code { background:#F1ECE2; padding:1px 6px; border-radius:6px; font-size:13px; }
+  .msg { padding:10px 12px; background:#E9F3EC; border-radius:10px; margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; } td, th { padding:4px 6px; border-bottom:1px dashed #E4DDCF; text-align:left; }
+  ol li { margin:4px 0; }
+  a { color:#1E5C46; }
+</style>
+</head>
+<body>
+<div class="app">
+<a href="/">← 성적표로</a>
+<h1>설정</h1>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+
+<h2>1. 구글 서비스 계정 키</h2>
+<div class="card">
+  {% if email %}<p>현재 키: <code>{{ email }}</code><br><span style="color:#8A948E">이 이메일을 서치콘솔 각 속성(설정 → 사용자 및 권한 → 사용자 추가, 권한 '전체')과 GA4(관리 → 속성 액세스 관리 → 추가, 역할 '뷰어')에 넣어야 데이터가 옵니다.</span></p>{% else %}<p>아직 키가 없습니다.</p>{% endif %}
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="key" accept=".json"> <button class="btn">키 저장</button>
+  </form>
+  <details style="margin-top:10px;"><summary>키 만드는 순서 (한 번만)</summary>
+    <ol>
+      <li><a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> 접속 → 위쪽 프로젝트 선택 → 새 프로젝트 (이름 아무거나, 예: seo-dash)</li>
+      <li>왼쪽 메뉴 <b>API 및 서비스 → 라이브러리</b>에서 세 개를 검색해 각각 <b>사용</b>: <code>Google Search Console API</code>, <code>Google Analytics Data API</code>, <code>Google Analytics Admin API</code></li>
+      <li><b>IAM 및 관리자 → 서비스 계정 → 서비스 계정 만들기</b> (이름 seo-dash) → 만들기 → 역할은 건너뛰고 완료</li>
+      <li>만든 계정 클릭 → <b>키</b> 탭 → 키 추가 → 새 키 만들기 → <b>JSON</b> → 파일이 내려받아짐 (이 파일이 비밀번호입니다. 다른 곳에 올리지 마세요)</li>
+      <li>그 파일을 위 "키 저장"으로 올리기 → 화면에 나오는 이메일(…@…iam.gserviceaccount.com)을 복사</li>
+      <li>서치콘솔 (search.google.com/search-console) → 속성마다 왼쪽 아래 <b>설정 → 사용자 및 권한 → 사용자 추가</b> → 이메일 붙여넣기, 권한 <b>전체</b></li>
+      <li>GA4 (analytics.google.com) → 왼쪽 아래 <b>관리 → 속성 액세스 관리 → + → 사용자 추가</b> → 이메일, 역할 <b>뷰어</b> (속성마다)</li>
+      <li>성적표로 돌아가 <b>지금 동기화</b></li>
+    </ol>
+  </details>
+</div>
+
+<h2>2. 네이버 서치어드바이저 (수동)</h2>
+<div class="card">
+  <p>네이버는 자동 수집 API가 없습니다. 서치어드바이저 → 리포트 → <b>검색 노출·클릭</b> 화면에서 다운로드한 CSV를 올리면 함께 보여 줍니다.</p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="text" name="naver_site" placeholder="사이트 주소 (예: donpyo.com)" style="margin-bottom:8px;">
+    <input type="file" name="naver" accept=".csv"> <button class="btn">CSV 저장</button>
+  </form>
+</div>
+
+<h2>3. 동기화 기록</h2>
+<div class="card">
+  <table><tr><th>시작</th><th>끝</th><th>상태</th><th>내용</th></tr>
+  {% for l in logs %}<tr><td>{{ l.started }}</td><td>{{ l.finished or '' }}</td><td>{{ l.status }}</td><td>{{ l.message }}</td></tr>{% else %}<tr><td colspan="4">없음</td></tr>{% endfor %}
+  </table>
+  <p style="font-size:12px;color:#8A948E;">키 파일 {{ key_path }} · 데이터 {{ db_path }} · 서버가 켜질 때와 12시간마다 자동 동기화, 성적표의 버튼으로 언제든 수동 동기화.</p>
+</div>
+</div>
+</body>
+</html>
