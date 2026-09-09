@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS ga_daily (
 CREATE TABLE IF NOT EXISTS ga_page (
   property TEXT, run_date TEXT, page TEXT, pageviews INTEGER, users INTEGER,
   PRIMARY KEY (property, run_date, page));
+CREATE TABLE IF NOT EXISTS ga_host (
+  property TEXT, run_date TEXT, host TEXT, pageviews INTEGER, users INTEGER, sessions INTEGER,
+  PRIMARY KEY (property, run_date, host));
 CREATE TABLE IF NOT EXISTS ga_source (
   property TEXT, run_date TEXT, source TEXT, sessions INTEGER,
   PRIMARY KEY (property, run_date, source));

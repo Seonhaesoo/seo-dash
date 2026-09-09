@@ -138,6 +138,11 @@ def sync_ga(s, con, full=False):
         con.execute('DELETE FROM ga_page WHERE property=? AND run_date=?', (pid, run_date))
         for x in rows:
             con.execute('INSERT OR REPLACE INTO ga_page VALUES (?,?,?,?,?)', (pid, run_date, x['dimensionValues'][0]['value'], int(float(x['metricValues'][0]['value'])), int(float(x['metricValues'][1]['value']))))
+        rows = ga_report(s, pid, {'dateRanges': [{'startDate': '7daysAgo', 'endDate': 'today'}], 'dimensions': [{'name': 'hostName'}], 'metrics': [{'name': 'screenPageViews'}, {'name': 'activeUsers'}, {'name': 'sessions'}], 'limit': 20, 'orderBys': [{'metric': {'metricName': 'screenPageViews'}, 'desc': True}]})
+        con.execute('DELETE FROM ga_host WHERE property=? AND run_date=?', (pid, run_date))
+        for x in rows:
+            m = [int(float(v['value'])) for v in x['metricValues']]
+            con.execute('INSERT OR REPLACE INTO ga_host VALUES (?,?,?,?,?,?)', (pid, run_date, x['dimensionValues'][0]['value'], m[0], m[1], m[2]))
         rows = ga_report(s, pid, {'dateRanges': [{'startDate': '7daysAgo', 'endDate': 'today'}], 'dimensions': [{'name': 'sessionSource'}], 'metrics': [{'name': 'sessions'}], 'limit': 30, 'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}]})
         con.execute('DELETE FROM ga_source WHERE property=? AND run_date=?', (pid, run_date))
         for x in rows:

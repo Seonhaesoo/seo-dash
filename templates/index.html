@@ -31,6 +31,10 @@
   .tag { display:inline-block; font-size:11px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
   .note { font-size:11.5px; color:var(--faint); margin-top:6px; }
   a { color:var(--green); }
+.ga-say { margin: 8px 0 0; font-size: 12.5px; line-height: 1.6; color: #4A443C; background: #F3F0E7; border-radius: 8px; padding: 8px 10px; }
+.tag { display: inline-block; margin-left: 4px; padding: 1px 5px; border-radius: 4px; background: #EEE9DC; color: #8A857A; font-size: 10.5px; vertical-align: middle; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: #C9C3B4; }
+.dot.search { background: #2E7D5B; } .dot.sns { background: #B8862B; } .dot.direct { background: #8AA3B8; } .dot.link { background: #C08457; } .dot.unknown { background: #C9C3B4; }
 </style>
 </head>
 <body>
@@ -105,15 +109,20 @@
     <rect x="{{ i * w }}" y="{{ 48 - (r.users / mx * 46 if mx else 0) }}" width="{{ w - 1 }}" height="{{ (r.users / mx * 46) if mx else 0 }}" fill="#B8862B"></rect>
     {% endfor %}
   </svg>
-  <div class="note">30일 · 연한 막대 페이지뷰, 금색 막대 방문자</div>
+  <div class="note">30일 · 연한 막대는 열어 본 페이지 수, 금색 막대는 사람 수</div>
+  <p class="ga-say">{{ a.headline }}</p>
+  {% if a.mixed %}<details open><summary>사이트별 (7일)</summary>
+    <table><tr><th>사이트</th><th style="text-align:right">페이지뷰</th><th style="text-align:right">방문자</th></tr>
+    {% for h in a.hosts %}<tr><td class="q">{{ h.label }}</td><td class="n">{{ '{:,}'.format(h.pageviews) }}</td><td class="n">{{ '{:,}'.format(h.users) }}</td></tr>{% endfor %}
+    </table><div class="note">한 GA4 속성에 여러 사이트가 함께 들어 있어 나눠 보여 줍니다</div></details>{% endif %}
   <details open><summary>많이 본 페이지 (7일)</summary>
     <table><tr><th>페이지</th><th style="text-align:right">페이지뷰</th><th style="text-align:right">방문자</th></tr>
-    {% for p in a.pages %}<tr><td class="q" title="{{ p.page }}">{{ p.page }}</td><td class="n">{{ '{:,}'.format(p.pageviews) }}</td><td class="n">{{ '{:,}'.format(p.users) }}</td></tr>{% else %}<tr><td colspan="3" style="color:var(--faint)">아직 없음</td></tr>{% endfor %}
+    {% for p in a.pages %}<tr><td class="q" title="{{ p.page }}">{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.page }}</a>{% else %}{{ p.page }}{% endif %}{% if p.label %} <span class="tag">{{ p.label }}</span>{% endif %}</td><td class="n">{{ '{:,}'.format(p.pageviews) }}</td><td class="n">{{ '{:,}'.format(p.users) }}</td></tr>{% else %}<tr><td colspan="3" style="color:var(--faint)">아직 없음</td></tr>{% endfor %}
     </table></details>
   <details><summary>어디서 왔나 (7일)</summary>
     <table><tr><th>유입</th><th style="text-align:right">세션</th></tr>
-    {% for s in a.sources %}<tr><td class="q">{{ s.source }}</td><td class="n">{{ '{:,}'.format(s.sessions) }}</td></tr>{% endfor %}
-    </table></details>
+    {% for s in a.sources %}<tr><td class="q"><span class="dot {{ s.kind }}"></span>{{ s.label }}{% if s.label != s.source %} <span class="tag">{{ s.source }}</span>{% endif %}</td><td class="n">{{ '{:,}'.format(s.sessions) }}</td></tr>{% endfor %}
+    </table><div class="note"><span class="dot search"></span>검색 <span class="dot sns"></span>SNS <span class="dot direct"></span>직접 <span class="dot link"></span>다른 사이트 링크</div></details>
 </div>
 {% endfor %}
 </div>
