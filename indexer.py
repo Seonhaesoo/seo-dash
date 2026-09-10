@@ -44,7 +44,7 @@ STATE = {'Submitted and indexed': 'indexed', 'Indexed, not submitted in sitemap'
 
 
 def now():
-    return (dt.datetime.utcnow() + dt.timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+    return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
 
 
 def log(msg):
