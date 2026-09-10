@@ -62,8 +62,31 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+cat > "$HOME/.config/systemd/user/seo-dash-index.service" <<EOF
+[Unit]
+Description=seo-dash indexer (IndexNow 네이버·빙 알림 · 구글 사이트맵 재제출 · 색인 표본)
+
+[Service]
+Type=oneshot
+WorkingDirectory=$APP
+ExecStart=$APP/.venv/bin/python -u indexer.py
+EOF
+
+cat > "$HOME/.config/systemd/user/seo-dash-index.timer" <<EOF
+[Unit]
+Description=seo-dash indexer timer — 시작 10분 뒤, 이후 6시간마다
+
+[Timer]
+OnStartupSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl --user daemon-reload
-systemctl --user enable --now seo-dash.service seo-dash-sync.timer
+systemctl --user enable --now seo-dash.service seo-dash-sync.timer seo-dash-index.timer
 systemctl --user restart seo-dash.service
 loginctl enable-linger "$USER" 2>/dev/null || true
 sleep 3

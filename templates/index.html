@@ -91,6 +91,29 @@
 {% endfor %}
 </div>
 
+<h2 style="margin:22px 0 0; font-size:17px;">색인 알림 <span class="tag">IndexNow · 사이트맵 · 표본</span></h2>
+<div class="card" style="margin-top:12px">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+    <div class="meta" style="margin:0">새 주소를 네이버·빙에 알리고(IndexNow), 새 주소가 나온 사이트맵은 구글에 다시 제출합니다 · 6시간마다 · 표본은 주 1회 무작위 10쪽</div>
+    <form method="post" action="/index/run"><button class="btn ghost" {% if idx_running %}disabled{% endif %}>{{ '보내는 중…' if idx_running else '지금 보내기' }}</button></form>
+  </div>
+  <table>
+    <tr><th>사이트</th><th style="text-align:right">아는 주소</th><th style="text-align:right">네이버</th><th style="text-align:right">빙</th><th>구글 사이트맵</th><th>색인 표본</th></tr>
+    {% for x in idx %}
+    <tr>
+      <td class="q">{{ x.name }}{% if not x.on %} <span class="tag">꺼 둠</span>{% endif %}</td>
+      <td class="n">{{ '{:,}'.format(x.known) }}</td>
+      <td class="n">{{ '{:,}'.format(x.naver) }}{% if x.logs['네이버'] and x.logs['네이버'].status != 'ok' %} <span class="tag" style="color:var(--red)">{{ x.logs['네이버'].status }}</span>{% endif %}</td>
+      <td class="n">{{ '{:,}'.format(x.bing) }}{% if x.logs['빙'] and x.logs['빙'].status != 'ok' %} <span class="tag" style="color:var(--red)">{{ x.logs['빙'].status }}</span>{% endif %}</td>
+      <td>{% if x.logs['구글'] %}{{ x.logs['구글'].ts[5:] }}{% if x.logs['구글'].status != 'ok' %} <span class="tag" style="color:var(--red)">{{ x.logs['구글'].status }}</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if x.samples %}{% set a = x.samples[0] %}<b>{{ a.indexed }}</b>/{{ a.total }} 색인{% if a.unknown %} · 미발견 {{ a.unknown }}{% endif %}{% if a.crawled %} · 크롤됨 {{ a.crawled }}{% endif %}{% if x.samples|length > 1 %} <span class="tag">전 {{ x.samples[1].indexed }}/{{ x.samples[1].total }}</span>{% endif %}{% else %}—{% endif %}</td>
+    </tr>
+    {% if x.skip and (not x.logs['네이버'] or x.skip.ts > x.logs['네이버'].ts) %}<tr><td colspan="6" class="note" style="color:var(--red)">{{ x.name }}: {{ x.skip.message }}</td></tr>{% endif %}
+    {% endfor %}
+  </table>
+  <div class="note">네이버·빙 숫자는 지금까지 알린 주소 수입니다. 구글은 자동 색인 요청이 막혀 있어 사이트맵 재제출만 합니다. 색인 표본의 "미발견"은 구글이 아직 그 주소를 모르는 상태입니다.</div>
+</div>
+
 <h2 style="margin:22px 0 0; font-size:17px;">방문 (GA4)</h2>
 <div class="grid">
 {% for a in ga %}

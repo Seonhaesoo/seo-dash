@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE TABLE IF NOT EXISTS naver_daily (
   site TEXT, date TEXT, clicks INTEGER, impressions INTEGER, visitors INTEGER,
   PRIMARY KEY (site, date));
+CREATE TABLE IF NOT EXISTS idx_url (
+  site TEXT, url TEXT, sitemap TEXT, first_seen TEXT, naver_at TEXT, bing_at TEXT,
+  PRIMARY KEY (site, url));
+CREATE TABLE IF NOT EXISTS idx_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, site TEXT, kind TEXT, engine TEXT, count INTEGER, status TEXT, message TEXT);
+CREATE TABLE IF NOT EXISTS idx_sample (
+  site TEXT, date TEXT, total INTEGER, indexed INTEGER, crawled INTEGER, discovered INTEGER, unknown INTEGER, other INTEGER,
+  PRIMARY KEY (site, date));
 """
 
 

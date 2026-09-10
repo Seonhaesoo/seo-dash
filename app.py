@@ -12,11 +12,13 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 
 from db import connect, tx, BASE, DB_PATH
 import collector
+import indexer
 
 app = Flask(__name__, template_folder=os.path.join(BASE, 'templates'))
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
 SYNC_LOCK = threading.Lock()
 SYNC_STATE = {'running': False, 'log': ''}
+INDEX_STATE = {'running': False}
 KEY_PATH = collector.KEY_PATH
 
 
@@ -50,6 +52,36 @@ def maybe_auto_sync():
         if age < dt.timedelta(hours=12):
             return
     start_sync()
+
+
+# ---------- 색인 알림 ----------
+def start_index():
+    if INDEX_STATE['running']:
+        return False
+    def job():
+        INDEX_STATE['running'] = True
+        try:
+            indexer.run()
+        finally:
+            INDEX_STATE['running'] = False
+    threading.Thread(target=job, daemon=True).start()
+    return True
+
+
+def summarize_idx(con):
+    """사이트별 색인 알림 현황 — 아는 주소 · 엔진별 알린 수 · 마지막 결과 · 색인 표본(최근 두 번)"""
+    out = []
+    for name, host, on in indexer.SITES:
+        r = con.execute('SELECT COUNT(*) n, COUNT(naver_at) nv, COUNT(bing_at) bg, MAX(first_seen) last FROM idx_url WHERE site=?', (name,)).fetchone()
+        logs = {}
+        for kind, eng in (('indexnow', '네이버'), ('indexnow', '빙'), ('sitemap', '구글')):
+            row = con.execute('SELECT ts, count, status FROM idx_log WHERE site=? AND kind=? AND engine=? ORDER BY id DESC LIMIT 1', (name, kind, eng)).fetchone()
+            logs[eng] = dict(row) if row else None
+        skip = con.execute("SELECT ts, message FROM idx_log WHERE site=? AND kind IN ('skip', 'error') ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+        samples = [dict(x) for x in con.execute('SELECT * FROM idx_sample WHERE site=? ORDER BY date DESC LIMIT 2', (name,))]
+        out.append({'name': name, 'host': host, 'on': on, 'known': r['n'], 'naver': r['nv'], 'bing': r['bg'], 'last_new': r['last'],
+                    'logs': logs, 'skip': dict(skip) if skip else None, 'samples': samples})
+    return out
 
 
 # ---------- 계산 ----------
@@ -257,8 +289,9 @@ def index():
     gsc = [summarize_gsc(con, s, end) for s in sites]
     ga = [summarize_ga(con, p, end) for p in props]
     naver = [dict(r) for r in con.execute('SELECT site, MAX(date) d, SUM(clicks) c, SUM(impressions) i FROM naver_daily WHERE date>=? GROUP BY site', ((end - dt.timedelta(days=7)).isoformat(),))]
+    idx = summarize_idx(con)
     con.close()
-    return render_template('index.html', gsc=gsc, ga=ga, naver=naver, heads=headline(gsc, ga), last=last_sync(), running=SYNC_STATE['running'],
+    return render_template('index.html', gsc=gsc, ga=ga, naver=naver, heads=headline(gsc, ga), last=last_sync(), running=SYNC_STATE['running'], idx=idx, idx_running=INDEX_STATE['running'],
                            has_key=os.path.exists(KEY_PATH), today=end.isoformat(), host=request.host)
 
 
@@ -267,6 +300,12 @@ def sync():
     if not os.path.exists(KEY_PATH):
         return redirect(url_for('settings'))
     start_sync(full=request.form.get('full') == '1')
+    return redirect(url_for('index'))
+
+
+@app.route('/index/run', methods=['POST'])
+def index_run():
+    start_index()
     return redirect(url_for('index'))
 
 
