@@ -86,8 +86,23 @@ def summarize_idx(con):
 
 # ---------- 계산 ----------
 def site_label(site):
+    if '#' in site:   # 도메인 속성에서 나눠 받은 하위 사이트 (collector.split_hosts)
+        return site.split('#', 1)[1]
     s = site.replace('sc-domain:', '').replace('https://', '').replace('http://', '').rstrip('/')
     return s
+
+
+def shown_sites(sites):
+    """카드로 보일 속성 — 같은 뿌리의 URL 속성과 겹치는 도메인 속성(사주첩처럼 하위 사이트를 묶는 속성)은 숨기고,
+    그 속성에서 나눠 받은 하위 사이트가 있으면 같은 주소의 http 속성도 숨긴다(https 전환 전후를 한 카드로)."""
+    def host(x):
+        h = site_label(x)
+        return h[4:] if h.startswith('www.') else h
+    own = [x for x in sites if '#' not in x and not x.startswith('sc-domain:')]
+    umbrellas = {x for x in sites if x.startswith('sc-domain:') and '#' not in x
+                 and any(host(o) == host(x) or host(o).endswith('.' + host(x)) for o in own)}
+    split = {site_label(x) for x in sites if '#' in x}
+    return [x for x in sites if x not in umbrellas and not (x.startswith('http://') and host(x) in split)]
 
 
 def pct(a, b):
@@ -284,7 +299,8 @@ def headline(gsc, ga):
 def index():
     con = connect()
     end = collector.today_kst()
-    sites = [r['site'] for r in con.execute('SELECT DISTINCT site FROM gsc_daily ORDER BY site')]
+    # 검색 데이터가 아직 없어도 사이트맵이 잡힌 속성(나눠 받은 하위 사이트 포함)은 카드로 — 묶음 도메인 속성은 shown_sites 가 뺀다
+    sites = shown_sites(sorted({r['site'] for r in con.execute('SELECT DISTINCT site FROM gsc_daily')} | {r['site'] for r in con.execute('SELECT DISTINCT site FROM gsc_sitemap')}))
     props = [r['property'] for r in con.execute('SELECT DISTINCT property FROM ga_daily ORDER BY name')]
     gsc = [summarize_gsc(con, s, end) for s in sites]
     ga = [summarize_ga(con, p, end) for p in props]

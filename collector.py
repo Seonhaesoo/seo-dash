@@ -1,11 +1,15 @@
 """구글 서치콘솔 + GA4 수집기 — 서비스 계정 키(key.json)로 접근 가능한 속성을 모두 찾아 SQLite에 넣는다.
 사용: python collector.py            (마지막 수집일 이후를 채움, 처음이면 16개월)
       python collector.py --full     (전체 다시 받기)
-서치콘솔 데이터는 보통 2~3일 늦게 확정되므로 최근 4일은 매번 다시 받는다."""
+서치콘솔 데이터는 보통 2~3일 늦게 확정되므로 최근 4일은 매번 다시 받는다.
+도메인 속성(sc-domain:)이 같은 뿌리의 URL 속성과 겹치면(사주첩처럼 하위 사이트를 묶는 속성) 따로 https 속성이 없는
+하위 사이트를 페이지 주소로 나눠 '속성#하위주소' 이름으로도 받는다 — 대시보드는 묶음 카드 대신 이것을 보여 준다."""
 import os
+import re
 import sys
 import json
 import datetime as dt
+from urllib.parse import urlsplit
 
 import requests
 from google.oauth2 import service_account
@@ -60,37 +64,75 @@ def gsc_query(s, site, body):
     return r.json().get('rows', [])
 
 
+def host_of(url):
+    """주소의 호스트 — www 는 떼고 비교"""
+    h = (urlsplit(url).netloc if '://' in url else url).lower()
+    return h[4:] if h.startswith('www.') else h
+
+
+def page_filter(host):
+    """도메인 속성에서 하위 사이트 하나만 — 페이지 주소가 http(s)://(www.)host/ 로 시작"""
+    return [{'filters': [{'dimension': 'page', 'operator': 'includingRegex', 'expression': r'^https?://(www\.)?' + re.escape(host) + '/'}]}]
+
+
+def split_hosts(con, site, sites, run_date):
+    """도메인 속성 site 가 같은 뿌리의 URL 속성과 겹치면, 따로 https 속성이 없는 하위 사이트 목록.
+    하위 사이트는 이번 수집에서 이 속성에 잡힌 사이트맵 주소와 페이지 주소에서 찾는다."""
+    if not site.startswith('sc-domain:'):
+        return []
+    root = site.split(':', 1)[1].lower()
+    under = lambda h: h == root or h.endswith('.' + root)
+    own = [x for x in sites if not x.startswith('sc-domain:') and under(host_of(x))]
+    if not own:
+        return []
+    https_own = {host_of(x) for x in own if x.startswith('https://')}
+    seen = {host_of(r['path'] or '') for r in con.execute('SELECT path FROM gsc_sitemap WHERE site=? AND run_date=?', (site, run_date))}
+    seen |= {host_of(r['page'] or '') for r in con.execute('SELECT DISTINCT page FROM gsc_page WHERE site=? AND run_date=?', (site, run_date))}
+    return sorted(h for h in seen if h and under(h) and h not in https_own)
+
+
+def collect(s, con, prop, key, end, run_date, full=False, host=None):
+    """속성 prop 의 일별 합계·검색어·페이지 상위·사이트맵을 key 이름으로 저장. host 가 있으면 그 하위 사이트 페이지만."""
+    extra = {'dimensionFilterGroups': page_filter(host)} if host else {}
+    row = con.execute('SELECT MAX(date) d FROM gsc_daily WHERE site=?', (key,)).fetchone()
+    if full or not row['d']:
+        start = end - dt.timedelta(days=FIRST_RUN_DAYS)
+    else:
+        start = dt.date.fromisoformat(row['d']) - dt.timedelta(days=RELOAD_DAYS)
+    rows = gsc_query(s, prop, {'startDate': start.isoformat(), 'endDate': end.isoformat(), 'dimensions': ['date'], 'rowLimit': 1000, **extra})
+    for x in rows:
+        con.execute('INSERT OR REPLACE INTO gsc_daily VALUES (?,?,?,?,?,?)', (key, x['keys'][0], int(x['clicks']), int(x['impressions']), x['ctr'], x['position']))
+    log(f'  {key}: 일별 {len(rows)}행 ({start}~{end})')
+    # 최근 7일 / 28일 검색어·페이지 상위
+    for window, days in (('7d', 7), ('28d', 28)):
+        ws = (end - dt.timedelta(days=days + 2)).isoformat()   # 확정 지연 감안
+        we = (end - dt.timedelta(days=2)).isoformat()
+        for dim, table in (('query', 'gsc_query'), ('page', 'gsc_page')):
+            rows = gsc_query(s, prop, {'startDate': ws, 'endDate': we, 'dimensions': [dim], 'rowLimit': 500, **extra})
+            con.execute(f'DELETE FROM {table} WHERE site=? AND run_date=? AND window=?', (key, run_date, window))
+            for x in rows:
+                con.execute(f'INSERT OR REPLACE INTO {table} VALUES (?,?,?,?,?,?,?)', (key, run_date, window, x['keys'][0], int(x['clicks']), int(x['impressions']), x['position']))
+    # 사이트맵 (나눠 받을 때는 그 하위 사이트 주소의 사이트맵만)
+    r = s.get(f"{GSC}/sites/{requests.utils.quote(prop, safe='')}/sitemaps", timeout=60)
+    if r.ok:
+        for sm in r.json().get('sitemap', []):
+            if host and host_of(sm.get('path') or '') != host:
+                continue
+            sub = sum(int(c.get('submitted', 0)) for c in sm.get('contents', []))
+            idx = sum(int(c.get('indexed', 0)) for c in sm.get('contents', []))
+            con.execute('INSERT OR REPLACE INTO gsc_sitemap VALUES (?,?,?,?,?,?,?,?)', (key, run_date, sm.get('path'), sub, idx, sm.get('lastDownloaded'), int(sm.get('errors', 0)), int(sm.get('warnings', 0))))
+
+
 def sync_gsc(s, con, full=False):
     sites = gsc_sites(s)
     log(f'서치콘솔 속성 {len(sites)}개: ' + ', '.join(sites))
     end = today_kst()
     run_date = end.isoformat()
     for site in sites:
-        row = con.execute('SELECT MAX(date) d FROM gsc_daily WHERE site=?', (site,)).fetchone()
-        if full or not row['d']:
-            start = end - dt.timedelta(days=FIRST_RUN_DAYS)
-        else:
-            start = dt.date.fromisoformat(row['d']) - dt.timedelta(days=RELOAD_DAYS)
-        rows = gsc_query(s, site, {'startDate': start.isoformat(), 'endDate': end.isoformat(), 'dimensions': ['date'], 'rowLimit': 1000})
-        for x in rows:
-            con.execute('INSERT OR REPLACE INTO gsc_daily VALUES (?,?,?,?,?,?)', (site, x['keys'][0], int(x['clicks']), int(x['impressions']), x['ctr'], x['position']))
-        log(f'  {site}: 일별 {len(rows)}행 ({start}~{end})')
-        # 최근 7일 / 28일 검색어·페이지 상위
-        for window, days in (('7d', 7), ('28d', 28)):
-            ws = (end - dt.timedelta(days=days + 2)).isoformat()   # 확정 지연 감안
-            we = (end - dt.timedelta(days=2)).isoformat()
-            for dim, table in (('query', 'gsc_query'), ('page', 'gsc_page')):
-                rows = gsc_query(s, site, {'startDate': ws, 'endDate': we, 'dimensions': [dim], 'rowLimit': 500})
-                con.execute(f'DELETE FROM {table} WHERE site=? AND run_date=? AND window=?', (site, run_date, window))
-                for x in rows:
-                    con.execute(f'INSERT OR REPLACE INTO {table} VALUES (?,?,?,?,?,?,?)', (site, run_date, window, x['keys'][0], int(x['clicks']), int(x['impressions']), x['position']))
-        # 사이트맵
-        r = s.get(f"{GSC}/sites/{requests.utils.quote(site, safe='')}/sitemaps", timeout=60)
-        if r.ok:
-            for sm in r.json().get('sitemap', []):
-                sub = sum(int(c.get('submitted', 0)) for c in sm.get('contents', []))
-                idx = sum(int(c.get('indexed', 0)) for c in sm.get('contents', []))
-                con.execute('INSERT OR REPLACE INTO gsc_sitemap VALUES (?,?,?,?,?,?,?,?)', (site, run_date, sm.get('path'), sub, idx, sm.get('lastDownloaded'), int(sm.get('errors', 0)), int(sm.get('warnings', 0))))
+        collect(s, con, site, site, end, run_date, full)
+    for site in sites:
+        for host in split_hosts(con, site, sites, run_date):
+            collect(s, con, site, f'{site}#{host}', end, run_date, full, host)
     con.commit()
     return sites
 
